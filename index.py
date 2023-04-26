@@ -1,8 +1,8 @@
 from fastapi import FastAPI,Request,Response,HTTPException,Depends,WebSocket,WebSocketDisconnect
-import uvicorn, os,json, datetime
+import uvicorn, os,json
 from fastapi.middleware.cors import CORSMiddleware
 
-
+from datetime import datetime
 
 from database.database import SessionLocal, engine
 from database import models
@@ -44,22 +44,18 @@ manager=ConnectionManager()
 def read_root():
     return{'it':'works'}
 
-@app.websocket()("/ws/{id}")
-async def websocket_endpoint(websocket:WebSocket,id:int, db:Session=Depends(get_db)):
+@app.websocket("/ws/{client_id}")
+async def websocket_endpoint(websocket: WebSocket, client_id: int):
     await manager.connect(websocket)
-    now=datetime.now()
-
-    current_time=now.strftime("%H:%M")
-
     try:
         while True:
-            data=await websocket.receive_text()
-            msg={"time":current_time,"id":id,'msg':data}
-            await manager.broadcast(json.dumps(msg))
+            data = await websocket.receive_text()
+            print(data)
+            await manager.send_personal_message(f"You wrote: {data}", websocket)
+            await manager.broadcast(f"Client #{client_id} says: {data}")
     except WebSocketDisconnect:
-        manager.disconnect()
-        msg={"time":current_time,"id":id,'msg':'OFFLINE'}
-        await manager.broadcast(json.dumps(msg))
+        manager.disconnect(websocket)
+        await manager.broadcast(f"Client #{client_id} left the chat")
    
 
 
