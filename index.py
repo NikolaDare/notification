@@ -1,5 +1,5 @@
-from fastapi import FastAPI,Request,Response,HTTPException,Depends
-import uvicorn, os
+from fastapi import FastAPI,Request,Response,HTTPException,Depends,WebSocket,WebSocketDisconnect
+import uvicorn, os,json, datetime
 from fastapi.middleware.cors import CORSMiddleware
 
 
@@ -9,7 +9,7 @@ from database import models
 from database.crud import get_user_by_email,get_key_from_user
 from sqlalchemy.orm import Session
 
-
+from util.ConnectionManager import ConnectionManager
 
 
 models.Base.metadata.create_all(bind=engine)
@@ -36,17 +36,31 @@ def get_db():
         yield db
     finally:
         db.close()
+
+manager=ConnectionManager()
 ###############################################################
 
 @app.get('/')
 def read_root():
     return{'it':'works'}
 
-@app.get("/ws/{id}")
-def oauth2Callback(request: Request, db:Session=Depends(get_db)):
-    key=get_key_from_user(db,1)
-    print(key.id)
-    return 'test'
+@app.websocket()("/ws/{id}")
+async def websocket_endpoint(websocket:WebSocket,id:int, db:Session=Depends(get_db)):
+    await manager.connect(websocket)
+    now=datetime.now()
+
+    current_time=now.strftime("%H:%M")
+
+    try:
+        while True:
+            data=await websocket.receive_text()
+            msg={"time":current_time,"id":id,'msg':data}
+            await manager.broadcast(json.dumps(msg))
+    except WebSocketDisconnect:
+        manager.disconnect()
+        msg={"time":current_time,"id":id,'msg':'OFFLINE'}
+        await manager.broadcast(json.dumps(msg))
+   
 
 
 
